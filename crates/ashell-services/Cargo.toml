@@ -11,6 +11,7 @@ publish = false
 
 [features]
 bluetooth = ["rfkill", "dep:zbus", "tokio/time"]
+brightness = ["dep:anyhow", "dep:log", "dep:tokio", "dep:udev", "dep:zbus", "tokio/net"]
 rfkill = ["dep:anyhow", "dep:inotify", "dep:log", "dep:tokio", "tokio/process"]
 serde = ["dep:serde"]
 throttle = ["dep:pin-project-lite", "dep:tokio", "tokio/time"]
@@ -24,4 +25,5 @@ log = { workspace = true, optional = true }
 pin-project-lite = { version = "0.2.16", optional = true }
 serde = { version = "1", default-features = false, features = ["derive"], optional = true }
 tokio = { workspace = true, optional = true }
+udev = { version = "0.9", features = ["send", "sync"], optional = true }
 zbus = { workspace = true, optional = true }

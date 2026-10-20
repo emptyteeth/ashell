@@ -176,7 +176,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml 1.1.4+spec-1.1.0",
- "udev",
  "unic-langid",
  "unicode-segmentation",
  "url",
@@ -197,6 +196,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "tokio",
+ "udev",
  "zbus",
 ]
 
