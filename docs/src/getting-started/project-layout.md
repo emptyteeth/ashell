@@ -103,7 +103,7 @@ src/
 │   ├── privacy.rs           # Privacy monitoring (PipeWire)
 │   ├── idle_inhibitor.rs    # Idle/sleep prevention
 │   ├── logind.rs            # systemd-logind (sleep/wake detection)
-│   └── xdg_icons.rs         # XDG icon theme lookup and caching
+│   └── xdg_icons.rs         # iced glue for the ashell-services icon lookup
 │
 └── utils/
     ├── mod.rs               # Utility module exports and helpers

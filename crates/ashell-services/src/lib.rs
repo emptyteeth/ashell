@@ -10,3 +10,5 @@ mod stream;
 pub mod throttle;
 #[cfg(feature = "upower")]
 pub mod upower;
+#[cfg(feature = "xdg_icons")]
+pub mod xdg_icons;
