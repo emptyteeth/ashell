@@ -294,17 +294,67 @@ pub async fn run_listener(tx: &broadcast::Sender<ServiceEvent<CompositorService>
         .map_err(|e| anyhow::anyhow!(e))
 }
 
+/// Where a client sits on its workspace, used to order the icons like the
+/// windows on screen.
+///
+/// Hyprland exposes no layout slot for a client, so tiled windows sort by
+/// their x position and floating windows follow, since their `at` is a free
+/// screen position rather than a place in the tiling. The focus history and
+/// then the address break ties, keeping the order stable across events.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ClientOrder {
+    floating: bool,
+    x: i32,
+    y: i32,
+    // Never-focused clients report a negative history; sort them last.
+    focus: i16,
+    address: u64,
+}
+
+impl ClientOrder {
+    fn new(client: &Client) -> Self {
+        Self {
+            floating: client.floating,
+            x: client.at.0,
+            y: client.at.1,
+            focus: if client.focus_history_id < 0 {
+                i16::MAX
+            } else {
+                i16::from(client.focus_history_id)
+            },
+            // Addresses are formatted as `0x...`, so parse the digits past the prefix.
+            address: u64::from_str_radix(client.address.to_string().trim_start_matches("0x"), 16)
+                .unwrap_or_default(),
+        }
+    }
+}
+
 fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorState> {
     let collect_windows = super::should_collect_windows();
 
     // 0.57 special/named workspaces have no id, so key by name.
-    let mut workspace_classes: HashMap<String, Vec<String>> = HashMap::new();
+    let mut workspace_windows: HashMap<String, Vec<(ClientOrder, CompositorWindow)>> =
+        HashMap::new();
     if collect_windows {
         for client in Clients::get()? {
-            workspace_classes
-                .entry(client.workspace.name)
+            workspace_windows
+                .entry(client.workspace.name.clone())
                 .or_default()
-                .push(client.class);
+                .push((
+                    ClientOrder::new(&client),
+                    CompositorWindow {
+                        id: client.address.to_string(),
+                        class: client.class,
+                        // 0 is the client currently holding focus.
+                        is_focused: client.focus_history_id == 0,
+                    },
+                ));
+        }
+
+        // `hyprctl clients` lists windows in stacking order, not in the order
+        // they appear on screen.
+        for windows in workspace_windows.values_mut() {
+            windows.sort_by_key(|(order, _)| *order);
         }
     }
 
@@ -315,20 +365,12 @@ fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorStat
             // Zero is not a real workspace id: identify by name instead.
             let id = w.id().unwrap_or(0);
             let is_special = w.is_special();
-            let windows = if collect_windows {
-                workspace_classes
-                    .remove(&w.name)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|class| CompositorWindow {
-                        id: String::new(),
-                        class,
-                        is_focused: false,
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            let windows = workspace_windows
+                .remove(&w.name)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(_, window)| window)
+                .collect();
             CompositorWorkspace {
                 id,
                 index: id,
@@ -397,7 +439,46 @@ fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorStat
 
 #[cfg(test)]
 mod tests {
-    use super::escape_lua_string;
+    use super::{ClientOrder, escape_lua_string};
+
+    fn order(floating: bool, x: i32, y: i32, focus: i16, address: u64) -> ClientOrder {
+        ClientOrder {
+            floating,
+            x,
+            y,
+            focus,
+            address,
+        }
+    }
+
+    #[test]
+    fn tiled_clients_sort_left_to_right() {
+        let mut clients = [
+            order(false, 1920, 0, 0, 1),
+            order(false, 0, 400, 1, 2),
+            order(false, 0, 0, 2, 3),
+        ];
+        clients.sort();
+        assert_eq!(
+            clients.map(|c| c.address),
+            [3, 2, 1],
+            "same column sorts by y before the focus history"
+        );
+    }
+
+    #[test]
+    fn floating_clients_sort_last() {
+        let mut clients = [order(true, 0, 0, 0, 1), order(false, 1920, 0, 1, 2)];
+        clients.sort();
+        assert_eq!(clients.map(|c| c.address), [2, 1]);
+    }
+
+    #[test]
+    fn equal_positions_keep_a_stable_order() {
+        let mut clients = [order(false, 10, 10, 3, 9), order(false, 10, 10, 3, 2)];
+        clients.sort();
+        assert_eq!(clients.map(|c| c.address), [2, 9]);
+    }
 
     #[test]
     fn quotes_and_backslashes_are_escaped() {
