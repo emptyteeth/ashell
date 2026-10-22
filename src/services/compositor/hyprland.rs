@@ -1,6 +1,6 @@
 use super::types::{
     ActiveWindow, ActiveWindowHyprland, CompositorCommand, CompositorEvent, CompositorMonitor,
-    CompositorState, CompositorWorkspace,
+    CompositorState, CompositorWindow, CompositorWorkspace,
 };
 use crate::services::{ServiceEvent, compositor::CompositorService};
 use anyhow::{Result, anyhow};
@@ -295,11 +295,11 @@ pub async fn run_listener(tx: &broadcast::Sender<ServiceEvent<CompositorService>
 }
 
 fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorState> {
-    let collect_classes = super::should_collect_window_classes();
+    let collect_windows = super::should_collect_windows();
 
     // 0.57 special/named workspaces have no id, so key by name.
     let mut workspace_classes: HashMap<String, Vec<String>> = HashMap::new();
-    if collect_classes {
+    if collect_windows {
         for client in Clients::get()? {
             workspace_classes
                 .entry(client.workspace.name)
@@ -315,8 +315,17 @@ fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorStat
             // Zero is not a real workspace id: identify by name instead.
             let id = w.id().unwrap_or(0);
             let is_special = w.is_special();
-            let window_classes = if collect_classes {
-                workspace_classes.remove(&w.name).unwrap_or_default()
+            let windows = if collect_windows {
+                workspace_classes
+                    .remove(&w.name)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|class| CompositorWindow {
+                        id: String::new(),
+                        class,
+                        is_focused: false,
+                    })
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -326,10 +335,10 @@ fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorStat
                 name: w.name,
                 monitor: w.monitor,
                 monitor_id: w.monitor_id,
-                windows: w.windows,
+                window_count: w.windows,
                 is_special,
                 has_urgent: false,
-                window_classes,
+                windows,
             }
         })
         .collect();

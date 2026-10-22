@@ -8,8 +8,8 @@ use crate::{
     services::{
         ReadOnlyService, Service, ServiceEvent,
         compositor::{
-            CompositorCommand, CompositorService, CompositorState, set_collect_window_classes,
-            types::CompositorMonitor,
+            CompositorCommand, CompositorService, CompositorState, CompositorWindow,
+            set_collect_windows, types::CompositorMonitor,
         },
         xdg_icons::{self, XdgIcon},
     },
@@ -89,16 +89,15 @@ struct VirtualDesktop {
     pub active: bool,
     pub windows: u16,
     pub has_urgent: bool,
-    pub window_classes: Vec<String>,
+    pub windows_list: Vec<CompositorWindow>,
 }
 
-fn resolve_workspace_icons(window_classes: &[String]) -> Vec<XdgIcon> {
-    window_classes
+fn resolve_workspace_icons(windows: &[CompositorWindow]) -> Vec<XdgIcon> {
+    windows
         .iter()
-        .map(|class| class.to_lowercase())
-        .unique()
-        .map(|class_lower| {
-            xdg_icons::get_icon_from_name(&class_lower).unwrap_or_else(xdg_icons::fallback_icon)
+        .map(|w| {
+            xdg_icons::get_icon_from_name(&w.class.to_lowercase())
+                .unwrap_or_else(xdg_icons::fallback_icon)
         })
         .collect()
 }
@@ -172,10 +171,10 @@ fn calculate_ui_workspaces(
                 } else {
                     Displayed::Hidden
                 },
-                windows: w.windows,
+                windows: w.window_count,
                 has_urgent: w.has_urgent,
                 is_special: true,
-                icons: collect_icons.then(|| resolve_workspace_icons(&w.window_classes)),
+                icons: collect_icons.then(|| resolve_workspace_icons(&w.windows)),
             });
         }
     }
@@ -191,18 +190,18 @@ fn calculate_ui_workspaces(
             let is_active = active_ids.contains(&w.id);
 
             if let Some(vdesk) = virtual_desktops.get_mut(&vdesk_id) {
-                vdesk.windows += w.windows;
+                vdesk.windows += w.window_count;
                 vdesk.active = vdesk.active || is_active;
                 vdesk.has_urgent = vdesk.has_urgent || w.has_urgent;
-                vdesk.window_classes.extend(w.window_classes);
+                vdesk.windows_list.extend(w.windows);
             } else {
                 virtual_desktops.insert(
                     vdesk_id,
                     VirtualDesktop {
                         active: is_active,
-                        windows: w.windows,
+                        windows: w.window_count,
                         has_urgent: w.has_urgent,
-                        window_classes: w.window_classes,
+                        windows_list: w.windows,
                     },
                 );
             }
@@ -230,7 +229,7 @@ fn calculate_ui_workspaces(
                 windows: vdesk.windows,
                 has_urgent: vdesk.has_urgent,
                 is_special: false,
-                icons: collect_icons.then(|| resolve_workspace_icons(&vdesk.window_classes)),
+                icons: collect_icons.then(|| resolve_workspace_icons(&vdesk.windows_list)),
             });
         });
 
@@ -244,10 +243,10 @@ fn calculate_ui_workspaces(
                 monitor_id: w.monitor_id,
                 monitor: w.monitor,
                 displayed,
-                windows: w.windows,
+                windows: w.window_count,
                 has_urgent: w.has_urgent,
                 is_special: false,
-                icons: collect_icons.then(|| resolve_workspace_icons(&w.window_classes)),
+                icons: collect_icons.then(|| resolve_workspace_icons(&w.windows)),
             });
         }
     } else {
@@ -273,10 +272,10 @@ fn calculate_ui_workspaces(
                 monitor_id: w.monitor_id,
                 monitor: w.monitor,
                 displayed,
-                windows: w.windows,
+                windows: w.window_count,
                 has_urgent: w.has_urgent,
                 is_special: false,
-                icons: collect_icons.then(|| resolve_workspace_icons(&w.window_classes)),
+                icons: collect_icons.then(|| resolve_workspace_icons(&w.windows)),
             });
         }
     }
@@ -399,9 +398,7 @@ fn workspace_button<'a>(
 
 impl Workspaces {
     pub fn new(config: WorkspacesModuleConfig) -> Self {
-        set_collect_window_classes(
-            config.indicator_format == WorkspaceIndicatorFormat::NameAndIcons,
-        );
+        set_collect_windows(config.indicator_format == WorkspaceIndicatorFormat::NameAndIcons);
         Self {
             config,
             service: None,
@@ -487,7 +484,7 @@ impl Workspaces {
             }
             Message::ConfigReloaded(cfg) => {
                 let icons_enabled = cfg.indicator_format == WorkspaceIndicatorFormat::NameAndIcons;
-                set_collect_window_classes(icons_enabled);
+                set_collect_windows(icons_enabled);
                 self.config = cfg;
                 if icons_enabled {
                     // Refresh only once the indexes are warm, so resolution

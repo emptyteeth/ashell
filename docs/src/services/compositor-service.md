@@ -80,6 +80,35 @@ pub struct CompositorState {
 }
 ```
 
+Each workspace carries the windows open on it:
+
+```rust
+pub struct CompositorWorkspace {
+    pub id: i32,
+    pub index: i32,
+    pub name: String,
+    pub monitor: String,
+    pub monitor_id: Option<i128>,
+    pub window_count: u16,          // as reported by the compositor
+    pub is_special: bool,
+    pub has_urgent: bool,
+    pub windows: Vec<CompositorWindow>,
+}
+
+pub struct CompositorWindow {
+    pub id: String,        // stable, unique within the workspace
+    pub class: String,     // app id or window class, used for the icon
+    pub is_focused: bool,
+}
+```
+
+`window_count` is always populated. `windows` is only filled when the
+workspace indicator asks for it (`indicator_format = "NameAndIcons"`); the
+backends check a global switch set through `set_collect_windows()` so the
+default configuration pays no cost for collecting them. Windows must be listed
+in visual order — left to right, top to bottom, floating windows last — because
+the module renders them as they arrive.
+
 ## CompositorEvent
 
 ```rust
