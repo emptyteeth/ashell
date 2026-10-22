@@ -208,6 +208,33 @@ async fn app_window_id(pid: Option<u32>, apps: &[String], title: Option<&str>) -
         .ok_or_else(|| anyhow!("No window found for pid {pid:?} or apps {apps:?}"))
 }
 
+/// Where a window sits on its workspace, used to order the icons like the
+/// windows on screen.
+///
+/// Tiled windows sort by column and then by tile within the column, all before
+/// floating ones. niri exposes `pos_in_scrolling_layout` only for tiled
+/// windows, so floating windows have no position in that layout and sort last.
+/// The window id breaks ties, keeping the order stable across events.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct LayoutOrder {
+    floating: bool,
+    column: usize,
+    tile: usize,
+    id: u64,
+}
+
+impl LayoutOrder {
+    fn new(win: &niri_ipc::Window) -> Self {
+        let (column, tile) = win.layout.pos_in_scrolling_layout.unwrap_or((0, 0));
+        Self {
+            floating: win.layout.pos_in_scrolling_layout.is_none(),
+            column,
+            tile,
+            id: win.id,
+        }
+    }
+}
+
 fn map_state(niri: &EventStreamState) -> CompositorState {
     let output_to_active_ws: HashMap<_, _> = niri
         .workspaces
@@ -232,19 +259,31 @@ fn map_state(niri: &EventStreamState) -> CompositorState {
 
     let collect_windows = super::should_collect_windows();
 
-    // Collect window classes per workspace (by visual index)
-    let mut workspace_classes: HashMap<i32, Vec<String>> = HashMap::new();
+    // Collect the windows of every workspace (by generic workspace id).
+    let mut workspace_windows: HashMap<i32, Vec<(LayoutOrder, CompositorWindow)>> = HashMap::new();
     if collect_windows {
         for win in niri.windows.windows.values() {
-            if let Some(ws_id) = win.workspace_id
-                && let Some(ws) = niri.workspaces.workspaces.get(&ws_id)
-                && let Some(app_id) = &win.app_id
-            {
-                workspace_classes
-                    .entry(ws.idx as i32)
-                    .or_default()
-                    .push(app_id.clone());
-            }
+            let (Some(ws_id), Some(app_id)) = (win.workspace_id, win.app_id.as_ref()) else {
+                continue;
+            };
+            let Some(ws) = niri.workspaces.workspaces.get(&ws_id) else {
+                continue;
+            };
+            let window = CompositorWindow {
+                id: win.id.to_string(),
+                class: app_id.clone(),
+                is_focused: win.is_focused,
+            };
+            workspace_windows
+                .entry(ws.id as i32)
+                .or_default()
+                .push((LayoutOrder::new(win), window));
+        }
+
+        // niri hands the windows over in a HashMap, whose iteration order is
+        // not stable, so put them back in the order they appear on screen.
+        for windows in workspace_windows.values_mut() {
+            windows.sort_by_key(|(order, _)| *order);
         }
     }
 
@@ -270,20 +309,12 @@ fn map_state(niri: &EventStreamState) -> CompositorState {
                 window_count: 0,
                 is_special: false,
                 has_urgent: w.is_urgent,
-                windows: if collect_windows {
-                    workspace_classes
-                        .remove(&idx)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|class| CompositorWindow {
-                            id: String::new(),
-                            class,
-                            is_focused: false,
-                        })
-                        .collect()
-                } else {
-                    Vec::new()
-                },
+                windows: workspace_windows
+                    .remove(&(w.id as i32))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(_, window)| window)
+                    .collect(),
             }
         })
         .collect();
@@ -354,5 +385,66 @@ fn map_state(niri: &EventStreamState) -> CompositorState {
         active_window,
         keyboard_layout,
         submap: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LayoutOrder;
+    use niri_ipc::Window;
+
+    fn window(id: u64, pos: Option<(usize, usize)>) -> Window {
+        let json = serde_json::json!({
+            "id": id,
+            "workspace_id": 1,
+            "is_focused": false,
+            "is_floating": pos.is_none(),
+            "is_urgent": false,
+            "layout": {
+                "pos_in_scrolling_layout": pos,
+                "tile_size": [0.0, 0.0],
+                "window_size": [0, 0],
+                "tile_pos_in_workspace_view": null,
+                "window_offset_in_tile": [0.0, 0.0],
+            },
+        });
+        serde_json::from_value(json).expect("window fixture")
+    }
+
+    #[test]
+    fn tiled_windows_sort_by_column_then_tile() {
+        let mut windows = [
+            LayoutOrder::new(&window(1, Some((2, 1)))),
+            LayoutOrder::new(&window(2, Some((1, 2)))),
+            LayoutOrder::new(&window(3, Some((1, 1)))),
+        ];
+        windows.sort();
+        assert_eq!(
+            windows.map(|o| o.id),
+            [3, 2, 1],
+            "leftmost column first, then top to bottom"
+        );
+    }
+
+    #[test]
+    fn floating_windows_sort_last() {
+        let mut windows = [
+            LayoutOrder::new(&window(1, None)),
+            LayoutOrder::new(&window(2, Some((3, 1)))),
+            LayoutOrder::new(&window(3, Some((1, 1)))),
+        ];
+        windows.sort();
+        assert_eq!(windows.map(|o| o.id), [3, 2, 1]);
+    }
+
+    #[test]
+    fn equal_positions_keep_a_stable_order() {
+        // Two windows sharing a slot (e.g. tabbed) still order deterministically.
+        let mut windows = [
+            LayoutOrder::new(&window(7, Some((1, 1)))),
+            LayoutOrder::new(&window(4, Some((1, 1)))),
+        ];
+        windows.sort();
+        assert_eq!(windows.map(|o| o.id), [4, 7]);
     }
 }
