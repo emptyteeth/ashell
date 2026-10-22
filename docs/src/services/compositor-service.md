@@ -143,6 +143,9 @@ Uses the `hyprland` crate for IPC communication:
 - Connects to Hyprland's Unix domain socket
 - Listens for events (workspace changes, window focus, layout changes)
 - Sends commands via the dispatcher
+- Orders window icons by the client's on-screen `at` position (tiled first,
+  floating last), since `hyprctl clients` lists windows in stacking order
+- Marks the focused window via `focusHistoryID == 0`
 
 ### Niri (`niri.rs`)
 
