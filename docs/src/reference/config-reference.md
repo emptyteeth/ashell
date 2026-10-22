@@ -111,7 +111,7 @@ If the `[updates]` section is omitted entirely, the Updates module is disabled.
 ```toml
 [workspaces]
 visibility_mode = "All"              # "All", "MonitorSpecific", "MonitorSpecificExclusive"
-indicator_format = "Name"            # "Name" or "NameAndIcons"
+indicator_format = "Name"            # "Name", or "NameAndIcons" for per-window icons
 group_by_monitor = false
 enable_workspace_filling = false     # Fill empty workspace slots
 disable_special_workspaces = false
