@@ -150,6 +150,9 @@ Uses the `niri-ipc` crate:
 - Connects to Niri's IPC socket (path from `NIRI_SOCKET` env var)
 - Listens for events and translates them to the common `CompositorEvent` format
 - Sends commands via the IPC protocol
+- Orders window icons by `layout.pos_in_scrolling_layout` (column, then tile),
+  with floating windows last, since niri reports windows through a `HashMap`
+  whose iteration order is not stable
 
 ### MangoWC (`mangowc.rs`)
 
