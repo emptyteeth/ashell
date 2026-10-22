@@ -174,10 +174,10 @@ fn build_state(all: AllMonitors) -> CompositorState {
                 name: tag.index.to_string(),
                 monitor: monitor.name.clone(),
                 monitor_id: Some(idx as i128),
-                windows: tag.client_count,
+                window_count: tag.client_count,
                 is_special: false,
                 has_urgent: tag.is_urgent,
-                window_classes: Vec::new(),
+                windows: Vec::new(),
             });
         }
 

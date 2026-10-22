@@ -1,3 +1,17 @@
+/// A window open on a workspace, as reported by the compositor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompositorWindow {
+    /// Stable identifier of the window, unique among the windows of the
+    /// workspace. Compositors whose ids are not stable use another key that
+    /// still tells two windows of the same application apart.
+    pub id: String,
+    /// Application id (Niri, MangoWC) or class (Hyprland, generic Wayland),
+    /// used to resolve the icon.
+    pub class: String,
+    /// Whether this window currently holds keyboard focus.
+    pub is_focused: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompositorWorkspace {
     pub id: i32,
@@ -5,10 +19,16 @@ pub struct CompositorWorkspace {
     pub name: String,
     pub monitor: String,
     pub monitor_id: Option<i128>,
-    pub windows: u16,
+    /// Number of windows on the workspace as reported by the compositor. Kept
+    /// apart from [`Self::windows`], which is only populated when the workspace
+    /// indicator asks for window icons.
+    pub window_count: u16,
     pub is_special: bool,
     pub has_urgent: bool,
-    pub window_classes: Vec<String>,
+    /// Windows in visual order (left to right, top to bottom), with floating
+    /// windows last. Only populated when the workspace indicator needs window
+    /// icons; empty otherwise.
+    pub windows: Vec<CompositorWindow>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

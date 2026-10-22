@@ -1,6 +1,6 @@
 use super::types::{
     ActiveWindow, ActiveWindowNiri, CompositorCommand, CompositorEvent, CompositorMonitor,
-    CompositorService, CompositorState, CompositorWorkspace,
+    CompositorService, CompositorState, CompositorWindow, CompositorWorkspace,
 };
 use crate::services::ServiceEvent;
 use anyhow::{Context, Result, anyhow};
@@ -230,11 +230,11 @@ fn map_state(niri: &EventStreamState) -> CompositorState {
         .sorted_unstable()
         .collect::<Vec<_>>();
 
-    let collect_classes = super::should_collect_window_classes();
+    let collect_windows = super::should_collect_windows();
 
     // Collect window classes per workspace (by visual index)
     let mut workspace_classes: HashMap<i32, Vec<String>> = HashMap::new();
-    if collect_classes {
+    if collect_windows {
         for win in niri.windows.windows.values() {
             if let Some(ws_id) = win.workspace_id
                 && let Some(ws) = niri.workspaces.workspaces.get(&ws_id)
@@ -267,11 +267,20 @@ fn map_state(niri: &EventStreamState) -> CompositorState {
                         .position(|o| *o == wo)
                         .map_or(-1, |i| i as i32) as i128
                 }),
-                windows: 0,
+                window_count: 0,
                 is_special: false,
                 has_urgent: w.is_urgent,
-                window_classes: if collect_classes {
-                    workspace_classes.remove(&idx).unwrap_or_default()
+                windows: if collect_windows {
+                    workspace_classes
+                        .remove(&idx)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|class| CompositorWindow {
+                            id: String::new(),
+                            class,
+                            is_focused: false,
+                        })
+                        .collect()
                 } else {
                     Vec::new()
                 },
@@ -287,7 +296,7 @@ fn map_state(niri: &EventStreamState) -> CompositorState {
             if let Some(ws) = niri.workspaces.workspaces.get(&ws_id)
                 && let Some(generic_ws) = workspaces.iter_mut().find(|w| w.id == ws.id as i32)
             {
-                generic_ws.windows += 1;
+                generic_ws.window_count += 1;
                 if win.is_urgent {
                     generic_ws.has_urgent = true;
                 }

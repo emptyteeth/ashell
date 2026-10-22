@@ -226,10 +226,10 @@ impl GenericState {
                     // ext-workspace exposes no per-workspace client count; report
                     // a non-zero value so workspaces render in the occupied solid
                     // style rather than all appearing empty.
-                    windows: 1,
+                    window_count: 1,
                     is_special: false,
                     has_urgent: ws.urgent,
-                    window_classes: Vec::new(),
+                    windows: Vec::new(),
                 }
             })
             .collect();
