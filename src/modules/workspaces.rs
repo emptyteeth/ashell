@@ -1,8 +1,7 @@
 use crate::{
-    components::icons::icon,
     config::{
-        AppearanceColor, InvertScrollDirection, WorkspaceIndicatorFormat, WorkspaceVisibilityMode,
-        WorkspacesModuleConfig,
+        AppearanceColor, InvertScrollDirection, Surface, WorkspaceIndicatorFormat,
+        WorkspaceVisibilityMode, WorkspacesModuleConfig,
     },
     outputs::Outputs,
     services::{
@@ -16,7 +15,7 @@ use crate::{
     theme::{AshellTheme, use_theme},
 };
 use iced::{
-    Element, Length, Subscription, SurfaceId, alignment,
+    Color, Element, Length, Subscription, SurfaceId, alignment,
     widget::{Image, MouseArea, Row, Svg, button, container, text},
 };
 use iced_anim::{AnimationBuilder, transition::Easing};
@@ -41,7 +40,15 @@ pub struct UiWorkspace {
     pub windows: u16,
     pub has_urgent: bool,
     pub is_special: bool,
-    pub icons: Option<Vec<XdgIcon>>,
+    pub icons: Option<Vec<UiWindowIcon>>,
+}
+
+/// The icon of one window of a workspace.
+#[derive(Debug, Clone)]
+pub struct UiWindowIcon {
+    pub icon: XdgIcon,
+    /// The window holding keyboard focus, drawn with a border around its icon.
+    pub focused: bool,
 }
 
 impl UiWorkspace {
@@ -69,12 +76,16 @@ struct VirtualDesktop {
     pub windows_list: Vec<CompositorWindow>,
 }
 
-fn resolve_workspace_icons(windows: &[CompositorWindow]) -> Vec<XdgIcon> {
+/// One icon per window, in the order the backend reports them, so that two
+/// windows of the same application show up twice and the row follows the
+/// windows on screen.
+fn resolve_workspace_icons(windows: &[CompositorWindow]) -> Vec<UiWindowIcon> {
     windows
         .iter()
-        .map(|w| {
-            xdg_icons::get_icon_from_name(&w.class.to_lowercase())
-                .unwrap_or_else(xdg_icons::fallback_icon)
+        .map(|w| UiWindowIcon {
+            icon: xdg_icons::get_icon_from_name(&w.class.to_lowercase())
+                .unwrap_or_else(xdg_icons::fallback_icon),
+            focused: w.is_focused,
         })
         .collect()
 }
@@ -323,11 +334,60 @@ fn calculate_ui_workspaces(
     result
 }
 
+/// Draw one window icon, boxing it when the window is the focused one.
+///
+/// The box is drawn as a container border rather than by recoloring the icon:
+/// an SVG or bitmap icon is multi-colored artwork, and a color filter would
+/// flatten it.
+///
+/// Every icon reserves the same box, focused or not, so moving focus between
+/// windows does not change the width of the indicator.
+fn window_icon<'a>(
+    theme: &AshellTheme,
+    icon: XdgIcon,
+    focused: bool,
+    icon_size: f32,
+    focused_color: Color,
+) -> Element<'a, Message> {
+    let icon: Element<'a, Message> = match icon {
+        XdgIcon::Svg(handle) => Svg::new(handle)
+            .height(Length::Fixed(icon_size))
+            .width(Length::Shrink)
+            .into(),
+        XdgIcon::Image(handle) => Image::new(handle)
+            .height(Length::Fixed(icon_size))
+            .width(Length::Shrink)
+            .into(),
+        XdgIcon::NerdFont(si) => crate::components::icons::icon(si).size(icon_size).into(),
+    };
+
+    // The border sits just outside the icon, so it does not cover the artwork.
+    let border_width = theme.space.xxs / 4.0;
+    let radius = theme.radius.sm;
+    container(icon)
+        .padding(theme.space.xxs / 2.0)
+        .style(move |_: &iced::Theme| container::Style {
+            border: iced::Border {
+                // Unfocused icons keep the border width and paint nothing, so
+                // the box costs the same space whether or not it is drawn.
+                width: border_width,
+                radius: radius.into(),
+                color: if focused {
+                    focused_color
+                } else {
+                    Color::TRANSPARENT
+                },
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn workspace_button<'a>(
     theme: &AshellTheme,
     name: String,
-    icons: Vec<XdgIcon>,
+    icons: Vec<UiWindowIcon>,
     font_size: f32,
     empty: bool,
     urgent: bool,
@@ -342,20 +402,18 @@ fn workspace_button<'a>(
         text(name).size(font_size).into()
     } else {
         let icon_size = font_size + 4.0;
+        // The border takes the workspace label's own color, which the button
+        // style already resolves for this workspace's state, so the box has the
+        // same contrast as the text next to it under any palette.
+        let focused_color = theme.workspace_button_style(empty, urgent, active, color)(
+            &theme.surface(Surface::Bar).iced_theme,
+            iced::widget::button::Status::Active,
+        )
+        .text_color;
         let children: Vec<Element<'a, Message>> =
             std::iter::once(text(name).size(font_size).into())
-                .chain(icons.into_iter().map(|i| {
-                    match i {
-                        XdgIcon::Svg(handle) => Svg::new(handle)
-                            .height(Length::Fixed(icon_size))
-                            .width(Length::Shrink)
-                            .into(),
-                        XdgIcon::Image(handle) => Image::new(handle)
-                            .height(Length::Fixed(icon_size))
-                            .width(Length::Shrink)
-                            .into(),
-                        XdgIcon::NerdFont(si) => icon(si).size(icon_size).into(),
-                    }
+                .chain(icons.into_iter().map(|UiWindowIcon { icon, focused }| {
+                    window_icon(theme, icon, focused, icon_size, focused_color)
                 }))
                 .collect();
         Row::with_children(children)
@@ -807,5 +865,56 @@ impl Workspaces {
 
     pub fn subscription(&self) -> Subscription<Message> {
         CompositorService::subscribe().map(|event| Message::ServiceEvent(Box::new(event)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_workspace_icons;
+    use crate::services::compositor::CompositorWindow;
+
+    fn window(class: &str, is_focused: bool) -> CompositorWindow {
+        CompositorWindow {
+            id: class.to_string(),
+            class: class.to_string(),
+            is_focused,
+        }
+    }
+
+    #[test]
+    fn every_window_gets_an_icon() {
+        // Two terminals are two windows, not one application.
+        let icons = resolve_workspace_icons(&[
+            window("kitty", false),
+            window("kitty", true),
+            window("firefox", false),
+        ]);
+        assert_eq!(icons.len(), 3);
+    }
+
+    #[test]
+    fn focus_follows_the_window_it_belongs_to() {
+        let icons = resolve_workspace_icons(&[
+            window("kitty", false),
+            window("firefox", true),
+            window("mpv", false),
+        ]);
+        assert_eq!(
+            icons.iter().map(|i| i.focused).collect::<Vec<_>>(),
+            [false, true, false]
+        );
+    }
+
+    #[test]
+    fn window_order_is_kept() {
+        // The backend already sorted the windows; the module must not reorder
+        // them, or the icons would stop matching the windows on screen.
+        let icons = resolve_workspace_icons(&[
+            window("mpv", false),
+            window("kitty", false),
+            window("firefox", false),
+        ]);
+        assert_eq!(icons.len(), 3);
+        assert!(icons.iter().all(|i| !i.focused));
     }
 }

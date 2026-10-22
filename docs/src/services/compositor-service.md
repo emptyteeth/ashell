@@ -107,7 +107,14 @@ workspace indicator asks for it (`indicator_format = "NameAndIcons"`); the
 backends check a global switch set through `set_collect_windows()` so the
 default configuration pays no cost for collecting them. Windows must be listed
 in visual order — left to right, top to bottom, floating windows last — because
-the module renders them as they arrive.
+the module renders them as they arrive. `id` only has to tell the windows of a
+workspace apart; the indicator resolves one icon per window and boxes the one
+with `is_focused` set.
+
+Every backend sorts with the same shape of key: a bool that sends floating
+windows last, then the position within the layout or on screen, then a stable
+tie-breaker (the focus history or the window id), so windows that share a slot
+do not swap places between events.
 
 ## CompositorEvent
 
