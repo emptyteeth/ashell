@@ -1,6 +1,6 @@
 use super::types::{
     ActiveWindow, ActiveWindowHyprland, CompositorCommand, CompositorEvent, CompositorMonitor,
-    CompositorState, CompositorWorkspace,
+    CompositorState, CompositorWindow, CompositorWorkspace,
 };
 use crate::services::{ServiceEvent, compositor::CompositorService};
 use anyhow::{Result, anyhow};
@@ -329,10 +329,10 @@ fn is_special_workspace_id(id: i32) -> bool {
 }
 
 fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorState> {
-    let collect_classes = super::should_collect_window_classes();
+    let collect_windows = super::should_collect_windows();
 
     let mut workspace_classes: HashMap<i32, Vec<String>> = HashMap::new();
-    if collect_classes {
+    if collect_windows {
         for client in Clients::get()? {
             workspace_classes
                 .entry(client.workspace.id)
@@ -345,8 +345,17 @@ fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorStat
         .into_iter()
         .sorted_by_key(|w| w.id)
         .map(|w| {
-            let window_classes = if collect_classes {
-                workspace_classes.remove(&w.id).unwrap_or_default()
+            let windows = if collect_windows {
+                workspace_classes
+                    .remove(&w.id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|class| CompositorWindow {
+                        id: String::new(),
+                        class,
+                        is_focused: false,
+                    })
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -356,10 +365,10 @@ fn fetch_full_state(internal_state: &HyprInternalState) -> Result<CompositorStat
                 name: w.name,
                 monitor: w.monitor,
                 monitor_id: w.monitor_id,
-                windows: w.windows,
+                window_count: w.windows,
                 is_special: is_special_workspace_id(w.id),
                 has_urgent: false,
-                window_classes,
+                windows,
             }
         })
         .collect();

@@ -10,6 +10,7 @@ pub mod types;
 
 pub use self::types::{
     CompositorChoice, CompositorCommand, CompositorEvent, CompositorService, CompositorState,
+    CompositorWindow,
 };
 
 use crate::services::{ReadOnlyService, Service, ServiceEvent};
@@ -26,14 +27,18 @@ static BROADCASTER: OnceCell<broadcast::Sender<ServiceEvent<CompositorService>>>
 
 static BACKEND: OnceLock<Option<CompositorChoice>> = OnceLock::new();
 
-static COLLECT_WINDOW_CLASSES: AtomicBool = AtomicBool::new(false);
+static COLLECT_WINDOWS: AtomicBool = AtomicBool::new(false);
 
-pub fn set_collect_window_classes(enabled: bool) {
-    COLLECT_WINDOW_CLASSES.store(enabled, Ordering::Relaxed);
+/// Ask the backends to collect the windows of every workspace.
+///
+/// Only the workspace indicator with `indicator_format = "NameAndIcons"` needs
+/// them, so every backend skips the extra work while this is off.
+pub fn set_collect_windows(enabled: bool) {
+    COLLECT_WINDOWS.store(enabled, Ordering::Relaxed);
 }
 
-pub fn should_collect_window_classes() -> bool {
-    COLLECT_WINDOW_CLASSES.load(Ordering::Relaxed)
+pub fn should_collect_windows() -> bool {
+    COLLECT_WINDOWS.load(Ordering::Relaxed)
 }
 
 /// Subscribe to compositor events.  Initializes the broadcaster on first call.
