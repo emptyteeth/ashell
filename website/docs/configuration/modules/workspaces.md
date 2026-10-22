@@ -146,14 +146,18 @@ sends: discrete steps for a wheel, smooth deltas for a trackpad):
 
 By default the workspace indicator shows only the workspace name or number
 (`indicator_format = "Name"`). Set `indicator_format = "NameAndIcons"` to also
-show an icon for each application open in the workspace, similar to waybar's
+show an icon for each window open in the workspace, similar to waybar's
 window-rewrite feature.
+
+There is one icon per window, not one per application: two terminals are shown
+as two icons. The icons follow the order the windows have on screen — left to
+right, top to bottom — and floating windows are placed after the tiled ones.
+The icon of the window holding keyboard focus is drawn with a border around it.
 
 Icons are resolved from each window's application class through the standard
 XDG icon lookup (icon theme plus `.desktop` files). When a class cannot be
-resolved a fallback glyph is shown instead. Window class collection is only
-performed while this option is enabled, so the default configuration adds no
-extra cost.
+resolved a fallback glyph is shown instead. Windows are only collected while
+this option is enabled, so the default configuration adds no extra cost.
 
 ```toml
 [workspaces]
@@ -162,8 +166,11 @@ indicator_format = "NameAndIcons"
 
 :::note
 
-Window class collection is currently implemented for Hyprland and Niri. On other
+Window collection is currently implemented for Hyprland and Niri. On other
 compositors the indicator falls back to showing the name only.
+
+Floating windows have no slot in the tiling, which is why they are ordered
+last.
 
 The icon index is built once at startup. Newly installed applications or a
 changed icon theme are picked up the next time `ashell` is restarted.
