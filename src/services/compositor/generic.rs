@@ -229,6 +229,13 @@ impl GenericState {
                     window_count: 1,
                     is_special: false,
                     has_urgent: ws.urgent,
+                    // Neither protocol pairs a toplevel with a workspace:
+                    // wlr-foreign-toplevel-management only reports which outputs
+                    // a toplevel is on, and ext-workspace-v1 reports workspaces
+                    // without their windows. A toplevel therefore cannot be
+                    // attributed to one of the workspaces on its output, so the
+                    // window icons are unavailable here and the indicator falls
+                    // back to the workspace name.
                     windows: Vec::new(),
                 }
             })

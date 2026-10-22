@@ -173,3 +173,8 @@ Fallback for compositors without a dedicated backend, using standard Wayland pro
 - `wl_output` for monitors, `ext-workspace-v1` for workspaces, and `wlr-foreign-toplevel-management` for the active window
 - Rebuilds the full `CompositorState` on every change
 - Only `FocusWorkspace` is supported as a command; others return an error
+- Reports no per-workspace windows: neither protocol pairs a toplevel with a
+  workspace. `wlr-foreign-toplevel-management` only says which outputs a
+  toplevel is on, and `ext-workspace-v1` lists workspaces without their
+  windows, so a toplevel cannot be attributed to one of the workspaces on its
+  output
