@@ -56,6 +56,11 @@ osd-idle-inhibitor-toggle =
         [on] Запрет сна включён
        *[off] Запрет сна выключен
     }
+osd-power-supply-toggle =
+    { $state ->
+        [on] Адаптер питания подключён
+       *[off] Работа от батареи
+    }
 
 ## Настройки — общие
 settings-scanning = Поиск…

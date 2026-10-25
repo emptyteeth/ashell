@@ -56,6 +56,11 @@ osd-idle-inhibitor-toggle =
         [on] Standby wird verhindert
        *[off] Standby wird erlaubt
     }
+osd-power-supply-toggle =
+    { $state ->
+        [on] Netzteil angeschlossen
+       *[off] Akkubetrieb
+    }
 
 ## Einstellungen — Geteilt
 settings-scanning = Wird gesucht …
