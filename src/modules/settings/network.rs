@@ -1,4 +1,5 @@
 use super::SubMenu;
+use super::osd_events;
 use crate::{
     components::{
         divider, format_indicator,
@@ -8,6 +9,7 @@ use crate::{
         styled_button, toggler,
     },
     config::{NetworkBackend, SettingsFormat},
+    osd,
     services::{
         ReadOnlyService, Service, ServiceEvent,
         network::{
@@ -116,6 +118,7 @@ pub enum Action {
     OpenShareWifiDialog { ssid: String, outcome: PskOutcome },
     CloseSubMenu(Task<Message>),
     CloseMenu(SurfaceId),
+    ShowOsd(osd::Request),
 }
 
 #[derive(Debug, Clone)]
@@ -160,10 +163,6 @@ impl NetworkSettings {
         }
     }
 
-    pub fn is_airplane_mode(&self) -> Option<bool> {
-        self.service.as_ref().map(|s| s.airplane_mode)
-    }
-
     /// Whether `ssid` can be joined without saving it.
     pub fn can_connect_once(&self, ssid: &str) -> bool {
         self.service
@@ -200,7 +199,13 @@ impl NetworkSettings {
                     }
                     other => {
                         if let Some(service) = self.service.as_mut() {
+                            let was_airplane = service.airplane_mode;
                             service.update(other);
+                            if let Some(request) =
+                                osd_events::airplane_request(was_airplane, service.airplane_mode)
+                            {
+                                return Action::ShowOsd(request);
+                            }
                         }
                         Action::None
                     }

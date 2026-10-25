@@ -47,8 +47,11 @@ fn create_transparent_buffer(shm: &WlShm, handle: &QueueHandle<State>) -> Option
 }
 
 /// Keeps the session from going idle while it is on, through the Wayland
-/// idle-inhibit protocol on a surface of its own. Other clients' inhibitors
-/// can't be observed, so its state is only its own.
+/// idle-inhibit protocol on a surface of its own.
+///
+/// `zwp_idle_inhibit_unstable_v1` is write-only: it exposes no event for the
+/// compositor's aggregate inhibitor state, so inhibitors held by other clients
+/// cannot be observed. Only this client's own inhibitor is known here.
 pub struct IdleInhibitor {
     _connection: Connection,
     _display: WlDisplay,
