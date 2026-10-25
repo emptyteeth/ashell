@@ -2076,6 +2076,7 @@ pub struct OsdConfig {
     pub timeout: u64,
     pub show_volume_percentage: bool,
     pub show_brightness_percentage: bool,
+    pub show_keyboard_backlight_percentage: bool,
 }
 
 impl Default for OsdConfig {
@@ -2085,6 +2086,7 @@ impl Default for OsdConfig {
             timeout: 1500,
             show_volume_percentage: false,
             show_brightness_percentage: false,
+            show_keyboard_backlight_percentage: false,
         }
     }
 }

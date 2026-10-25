@@ -139,6 +139,8 @@ pub enum StaticIcon {
     BellOff,
     Delete,
     QrCode,
+    PowerPlug,
+    PowerPlugOff,
 }
 
 impl StaticIcon {
@@ -262,6 +264,8 @@ impl StaticIcon {
             StaticIcon::BellOff => "\u{ec08}",
             StaticIcon::Delete => "\u{f01b4}",
             StaticIcon::QrCode => "\u{f0432}",
+            StaticIcon::PowerPlug => "\u{f06a5}",
+            StaticIcon::PowerPlugOff => "\u{f06a6}",
         }
     }
 

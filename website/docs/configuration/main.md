@@ -273,8 +273,16 @@ ashell msg toggle-airplane-mode
 ashell msg toggle-idle-inhibitor
 ```
 
-The OSD appears at center-bottom and auto-hides after a timeout. To suppress
-it for a specific command, add `--no-osd`:
+The OSD appears at center-bottom and auto-hides after a timeout.
+
+It is driven by state changes rather than by commands: when the underlying
+service reports a different level or toggle, the OSD follows. That keeps it
+consistent no matter what changed the state — a keybind, the settings menu, or
+another application. It reports volume, microphone, screen brightness,
+keyboard backlight and airplane mode this way, plus plugging and unplugging the
+power adapter on laptops.
+
+To suppress it for a specific command, add `--no-osd`:
 
 ```bash
 ashell msg volume-up --no-osd
@@ -288,6 +296,7 @@ enabled = true   # Disabled by default; set to true to enable the OSD overlay
 timeout = 1500   # Auto-hide delay in milliseconds
 show_volume_percentage = true    # Show percentage text next to volume/mic bar
 show_brightness_percentage = true # Show percentage text next to brightness bar
+show_keyboard_backlight_percentage = false # Show percentage text next to keyboard backlight bar
 ```
 
 ## Animations

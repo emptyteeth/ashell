@@ -226,6 +226,7 @@ enabled = false   # (default)
 timeout = 1500    # milliseconds
 show_volume_percentage = false      # (default) show numeric volume value in the OSD
 show_brightness_percentage = false  # (default) show numeric brightness value in the OSD
+show_keyboard_backlight_percentage = false  # (default) show numeric keyboard backlight value in the OSD
 
 # ── Animations ────────────────────────────────────────────────────────────────
 

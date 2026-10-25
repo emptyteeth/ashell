@@ -1,5 +1,6 @@
 use std::convert;
 
+use super::osd_events;
 use crate::{
     components::{
         ButtonKind, IconPosition, divider, format_indicator,
@@ -7,6 +8,7 @@ use crate::{
         quick_setting_button, slider_control, styled_button,
     },
     config::{PeripheralIndicators, SettingsFormat},
+    osd,
     services::{
         ReadOnlyService, Service, ServiceEvent,
         upower::{
@@ -109,6 +111,35 @@ pub enum Action {
     ToggleBatteryMenu,
     Command(Task<Message>),
     CloseMenu(SurfaceId),
+    ShowOsd(osd::Request),
+}
+
+/// The UPower values the OSD reports, compared across snapshots.
+///
+/// `kbd_backlight` reads `received` rather than `value`: a slider drag sets a
+/// local request first, and the OSD should follow what the hardware reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OsdState {
+    backlight: Option<(u32, u32)>,
+    on_battery: Option<bool>,
+    has_battery: bool,
+}
+
+fn osd_state(service: &UPowerService) -> OsdState {
+    OsdState {
+        backlight: service
+            .kbd_backlight
+            .as_ref()
+            .map(|b| (b.current.received(), b.max)),
+        on_battery: service.on_battery,
+        has_battery: service.system_battery.is_some(),
+    }
+}
+
+fn osd_request(prev: OsdState, next: OsdState) -> Option<osd::Request> {
+    osd_events::backlight_request(prev.backlight, next.backlight).or_else(|| {
+        osd_events::power_supply_request(prev.on_battery, next.on_battery, next.has_battery)
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -181,10 +212,15 @@ impl PowerSettings {
                     Action::None
                 }
                 ServiceEvent::Update(data) => {
-                    if let Some(service) = self.service.as_mut() {
-                        service.update(data);
+                    let Some(service) = self.service.as_mut() else {
+                        return Action::None;
+                    };
+                    let prev = osd_state(service);
+                    service.update(data);
+                    match osd_request(prev, osd_state(service)) {
+                        Some(request) => Action::ShowOsd(request),
+                        None => Action::None,
                     }
-                    Action::None
                 }
                 ServiceEvent::Error(()) => Action::None,
             },

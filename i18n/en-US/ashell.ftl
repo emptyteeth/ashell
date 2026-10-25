@@ -55,6 +55,11 @@ osd-idle-inhibitor-toggle =
         [on] Idle inhibitor turned on
        *[off] Idle inhibitor turned off
     }
+osd-power-supply-toggle =
+    { $state ->
+        [on] Power adapter connected
+       *[off] On battery power
+    }
 
 ## Settings — shared
 settings-scanning = Scanning...

@@ -55,6 +55,11 @@ osd-idle-inhibitor-toggle =
         [on] Inhibiteur de veille activé
        *[off] Inhibiteur de veille désactivé
     }
+osd-power-supply-toggle =
+    { $state ->
+        [on] Chargeur branché
+       *[off] Sur batterie
+    }
 
 ## Paramètres — communs
 settings-scanning = Recherche en cours…

@@ -12,10 +12,11 @@ Complete reference for all configuration options in `~/.config/ashell/config.tom
 | `layer` | `"Top"` \| `"Bottom"` \| `"Overlay"` | `"Bottom"` | Wayland layer (Bottom = below floating windows) |
 | `outputs` | `"All"` \| `"Active"` \| `{ Targets = [...] }` | `"All"` | Which monitors show the bar |
 | `enable_esc_key` | bool | `false` | Whether ESC key closes menus |
-| `osd.enabled` | bool | `false` | Show OSD overlay for IPC volume/microphone/brightness/airplane/idle-inhibitor commands |
+| `osd.enabled` | bool | `false` | Show the OSD overlay for state changes (volume, microphone, brightness, keyboard backlight, airplane mode, power adapter) and idle-inhibitor commands |
 | `osd.timeout` | u64 | `1500` | OSD auto-hide delay in milliseconds |
 | `osd.show_volume_percentage` | bool | `false` | Show the percentage in the volume/microphone OSD |
 | `osd.show_brightness_percentage` | bool | `false` | Show the percentage in the brightness OSD |
+| `osd.show_keyboard_backlight_percentage` | bool | `false` | Show the percentage in the keyboard backlight OSD |
 | `animations.enabled` | bool | `false` | Master toggle for UI animations (bar widths, menu open/close, toast slides, etc.) |
 | `logging.level` | String | `"warn"` | Log level ([env_logger syntax](https://docs.rs/env_logger)) |
 | `logging.target` | `"file"` \| `"stdout"` \| `"stderr"` | `"file"` | Where logs are written |
