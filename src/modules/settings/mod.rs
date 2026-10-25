@@ -35,6 +35,7 @@ pub(crate) mod audio;
 mod bluetooth;
 pub(crate) mod brightness;
 pub(crate) mod network;
+mod osd_events;
 mod power;
 
 type TooltipConfig = (fn(ButtonUIRef, SurfaceId) -> Message, MenuType);
@@ -116,6 +117,7 @@ pub enum Action {
     OpenTooltipMenu(SurfaceId, MenuType, ButtonUIRef),
     CloseTooltipMenu(SurfaceId, MenuType),
     ToggleDnd,
+    ShowOsd(crate::osd::Request),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -130,18 +132,6 @@ pub enum SubMenu {
 }
 
 impl Settings {
-    pub fn audio(&self) -> &AudioSettings {
-        &self.audio
-    }
-
-    pub fn brightness(&self) -> &BrightnessSettings {
-        &self.brightness
-    }
-
-    pub fn network(&self) -> &NetworkSettings {
-        &self.network
-    }
-
     pub fn idle_inhibitor(&self) -> &Option<IdleInhibitor> {
         &self.idle_inhibitor
     }
@@ -173,6 +163,7 @@ impl Settings {
     pub fn brightness_adjust(&mut self, up: bool) -> Action {
         match self.brightness.brightness_adjust(up) {
             brightness::Action::Command(task) => Action::Command(task.map(Message::Brightness)),
+            brightness::Action::ShowOsd(request) => Action::ShowOsd(request),
             brightness::Action::None => Action::None,
         }
     }
@@ -273,6 +264,7 @@ impl Settings {
                 }
                 power::Action::Command(task) => Action::Command(task.map(Message::Power)),
                 power::Action::CloseMenu(id) => Action::CloseMenu(id),
+                power::Action::ShowOsd(request) => Action::ShowOsd(request),
             },
             Message::Audio(msg) => match self.audio.update(msg) {
                 audio::Action::None => Action::None,
@@ -294,6 +286,7 @@ impl Settings {
                 }
                 audio::Action::CloseMenu(id) => Action::CloseMenu(id),
                 audio::Action::Task(task) => Action::Command(task.map(Message::Audio)),
+                audio::Action::ShowOsd(request) => Action::ShowOsd(request),
             },
             Message::Network(msg) => match self.network.update(msg) {
                 network::Action::None => Action::None,
@@ -350,6 +343,7 @@ impl Settings {
                     Action::Command(task.map(Message::Network))
                 }
                 network::Action::CloseMenu(id) => Action::CloseMenu(id),
+                network::Action::ShowOsd(request) => Action::ShowOsd(request),
             },
             Message::Bluetooth(msg) => match self.bluetooth.update(msg) {
                 bluetooth::Action::None => Action::None,
@@ -369,6 +363,7 @@ impl Settings {
             Message::Brightness(msg) => match self.brightness.update(msg) {
                 brightness::Action::None => Action::None,
                 brightness::Action::Command(task) => Action::Command(task.map(Message::Brightness)),
+                brightness::Action::ShowOsd(request) => Action::ShowOsd(request),
             },
             Message::ToggleSubMenu(menu_type) => {
                 self.toggle_submenu_to(menu_type);

@@ -34,6 +34,12 @@ where
         self.requested.unwrap_or(self.received)
     }
 
+    /// Source-of-truth value, ignoring an in-flight local request. Use this to
+    /// detect real changes coming back from the backend.
+    pub fn received(&self) -> Value {
+        self.received
+    }
+
     pub fn update(&mut self, message: Message<Value>) -> iced::Task<Message<Value>> {
         if let Some(handle) = self.timeout.take() {
             handle.abort();

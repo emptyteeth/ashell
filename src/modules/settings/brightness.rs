@@ -1,6 +1,7 @@
 use crate::{
     components::{format_indicator, icons::StaticIcon, slider_control},
     config::SettingsFormat,
+    osd,
     services::{
         ReadOnlyService, Service, ServiceEvent,
         brightness::{BrightnessCommand, BrightnessService},
@@ -25,6 +26,15 @@ pub enum Message {
 pub enum Action {
     None,
     Command(Task<Message>),
+    ShowOsd(osd::Request),
+}
+
+/// The backlight level, compared across snapshots.
+///
+/// Reads `received` rather than `value`: a slider drag sets a local request
+/// first, and the OSD should follow what the hardware actually reports.
+fn level(service: &BrightnessService) -> (u32, u32) {
+    (service.current.received(), service.max)
 }
 
 pub struct BrightnessSettings {
@@ -88,10 +98,18 @@ impl BrightnessSettings {
                     Action::None
                 }
                 ServiceEvent::Update(data) => {
-                    if let Some(service) = self.service.as_mut() {
-                        service.update(data);
+                    let Some(service) = self.service.as_mut() else {
+                        return Action::None;
+                    };
+                    let prev = level(service);
+                    service.update(data);
+                    match crate::modules::settings::osd_events::brightness_request(
+                        prev,
+                        level(service),
+                    ) {
+                        Some(request) => Action::ShowOsd(request),
+                        None => Action::None,
                     }
-                    Action::None
                 }
                 _ => Action::None,
             },

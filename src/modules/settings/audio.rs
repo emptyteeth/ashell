@@ -1,4 +1,5 @@
 use super::SubMenu;
+use super::osd_events;
 use crate::{
     components::{
         IconPosition, divider, format_indicator,
@@ -6,6 +7,7 @@ use crate::{
         slider_control, styled_button,
     },
     config::SettingsFormat,
+    osd,
     services::{
         ReadOnlyService, Service, ServiceEvent,
         audio::{AudioCommand, AudioEvent, AudioService, ChannelVolumesExt, DevicePortType, Port},
@@ -57,6 +59,7 @@ pub enum Action {
     ToggleSourcesMenu,
     CloseMenu(SurfaceId),
     CloseSubMenu,
+    ShowOsd(osd::Request),
 }
 
 #[derive(Debug, Clone)]
@@ -126,24 +129,20 @@ impl AudioSettings {
         }
     }
 
-    pub fn current_sink_volume(&self) -> Option<u32> {
-        self.service.as_ref().map(|s| s.sink_slider.value())
-    }
-
     pub fn real_sink_volume(&self) -> Option<u32> {
         self.service
             .as_ref()
             .and_then(|s| s.active_sink().map(|d| d.volume.get_volume()))
     }
 
-    pub fn is_sink_muted(&self) -> Option<bool> {
-        self.service
-            .as_ref()
-            .and_then(|s| s.active_sink().map(|d| d.is_mute))
-    }
-
     pub fn vol_max(&self) -> u32 {
         NORMAL_VOLUME * u32::from(self.config.max_volume) / 100
+    }
+
+    /// The bar's 100% mark relative to `NORMAL_VOLUME`, so overdrive values
+    /// keep their headroom on the OSD progress bar. Mirrors `vol_max()`.
+    fn scale(&self) -> f32 {
+        (self.vol_max() as f32 / NORMAL_VOLUME as f32).max(1.0)
     }
 
     pub fn volume_adjust(&mut self, up: bool) -> Action {
@@ -179,20 +178,10 @@ impl AudioSettings {
         }
     }
 
-    pub fn current_source_volume(&self) -> Option<u32> {
-        self.service.as_ref().map(|s| s.source_slider.value())
-    }
-
     pub fn real_source_volume(&self) -> Option<u32> {
         self.service
             .as_ref()
             .and_then(|s| s.active_source().map(|d| d.volume.get_volume()))
-    }
-
-    pub fn is_source_muted(&self) -> Option<bool> {
-        self.service
-            .as_ref()
-            .and_then(|s| s.active_source().map(|d| d.is_mute))
     }
 
     pub fn mic_max() -> u32 {
@@ -243,6 +232,7 @@ impl AudioSettings {
                     Action::None
                 }
                 ServiceEvent::Update(data) => {
+                    let scale = self.scale();
                     if let Some(service) = self.service.as_mut() {
                         let (sink_switched, source_switched) = match &data {
                             AudioEvent::ServerInfo(info) => (
@@ -258,13 +248,25 @@ impl AudioSettings {
                             _ => (false, false),
                         };
 
+                        let prev_levels = osd_events::audio_levels(service);
                         service.update(data);
+                        let osd_request = osd_events::audio_request(
+                            prev_levels,
+                            osd_events::audio_levels(service),
+                            scale,
+                        );
 
                         if sink_switched && let Some(cmd) = &self.config.sink_post_switch_cmd {
                             crate::utils::launcher::execute_command(cmd);
                         }
                         if source_switched && let Some(cmd) = &self.config.source_post_switch_cmd {
                             crate::utils::launcher::execute_command(cmd);
+                        }
+
+                        // The OSD reflects something the user just changed, so
+                        // it takes precedence over closing a now-empty submenu.
+                        if let Some(request) = osd_request {
+                            return Action::ShowOsd(request);
                         }
 
                         if !service.has_multiple_sinks() {

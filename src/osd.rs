@@ -30,23 +30,50 @@ struct OsdState {
     muted: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OsdKind {
     Volume,
     Microphone,
     Brightness,
+    KeyboardBacklight,
     Airplane,
     IdleInhibitor,
+    PowerSupply,
+}
+
+impl OsdKind {
+    /// Whether the value this kind reports is already visible to the user while
+    /// a menu is open (the menu shows the same slider or toggle). Showing an
+    /// OSD then would only repeat what is on screen.
+    pub fn shown_in_menu(self) -> bool {
+        matches!(
+            self,
+            Self::Volume
+                | Self::Microphone
+                | Self::Brightness
+                | Self::KeyboardBacklight
+                | Self::Airplane
+        )
+    }
+}
+
+/// Everything needed to show one OSD.
+///
+/// Every OSD source builds one of these, so the widget itself never needs to
+/// know where a value came from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Request {
+    pub kind: OsdKind,
+    /// Normalised value relative to 100% hardware (can exceed 1.0 for overdrive)
+    pub value: f32,
+    pub scale: f32,
+    /// For toggles this carries the active/enabled state.
+    pub muted: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Show {
-        kind: OsdKind,
-        value: f32,
-        scale: f32,
-        muted: bool,
-    },
+    Show(Request),
     Hide,
     ConfigReloaded(OsdConfig),
 }
@@ -75,17 +102,12 @@ impl Osd {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
-            Message::Show {
-                kind,
-                value,
-                scale,
-                muted,
-            } => {
+            Message::Show(request) => {
                 self.state = Some(OsdState {
-                    kind,
-                    value,
-                    scale,
-                    muted,
+                    kind: request.kind,
+                    value: request.value,
+                    scale: request.scale,
+                    muted: request.muted,
                 });
 
                 if let Some(handle) = self.timeout_handle.take() {
@@ -129,23 +151,43 @@ impl Osd {
             use_theme(|t| (t.space, t.font_size, t.radius, t.surface(Surface::Osd).blur));
 
         let overdrive = matches!(state.kind, OsdKind::Volume) && state.value > 1.0;
+        let keyboard_backlight_off =
+            matches!(state.kind, OsdKind::KeyboardBacklight) && state.value <= 0.0;
 
         let icon = match state.kind {
             OsdKind::Volume => AudioSettings::speaker_icon(state.muted, state.value, overdrive),
             OsdKind::Microphone => AudioSettings::microphone_icon(state.muted),
             OsdKind::Brightness => StaticIcon::Brightness,
+            OsdKind::KeyboardBacklight => {
+                if keyboard_backlight_off {
+                    StaticIcon::KeyboardBacklightOff
+                } else {
+                    StaticIcon::KeyboardBacklightOn
+                }
+            }
             OsdKind::Airplane => NetworkSettings::airplane_mode_icon(state.muted),
             OsdKind::IdleInhibitor => idle_inhibitor::icon(state.muted),
+            OsdKind::PowerSupply => {
+                if state.muted {
+                    StaticIcon::PowerPlug
+                } else {
+                    StaticIcon::PowerPlugOff
+                }
+            }
         };
 
         let show_percentage = match state.kind {
             OsdKind::Volume | OsdKind::Microphone => self.config.show_volume_percentage,
             OsdKind::Brightness => self.config.show_brightness_percentage,
+            OsdKind::KeyboardBacklight => self.config.show_keyboard_backlight_percentage,
             _ => false,
         };
 
         let detail: Element<'_, Message> = match state.kind {
-            OsdKind::Volume | OsdKind::Microphone | OsdKind::Brightness => {
+            OsdKind::Volume
+            | OsdKind::Microphone
+            | OsdKind::Brightness
+            | OsdKind::KeyboardBacklight => {
                 let bar = progress_bar(0.0..=state.scale, state.value)
                     .length(160.0)
                     .girth(8.0);
@@ -169,12 +211,13 @@ impl Osd {
                     container(bar).center_x(Length::Fill).into()
                 }
             }
-            OsdKind::Airplane | OsdKind::IdleInhibitor => {
+            OsdKind::Airplane | OsdKind::IdleInhibitor | OsdKind::PowerSupply => {
                 // For toggles, `muted` carries the active/enabled state.
                 let state_key = if state.muted { "on" } else { "off" };
                 let label = match state.kind {
                     OsdKind::Airplane => t!("osd-airplane-toggle", state = state_key),
                     OsdKind::IdleInhibitor => t!("osd-idle-inhibitor-toggle", state = state_key),
+                    OsdKind::PowerSupply => t!("osd-power-supply-toggle", state = state_key),
                     _ => unreachable!(),
                 };
                 container(text(label)).center_x(Length::Fill).into()

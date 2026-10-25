@@ -40,6 +40,10 @@ use std::{collections::HashMap, path::PathBuf};
 const OSD_WIDTH: u32 = 250;
 const OSD_HEIGHT: u32 = 64;
 
+/// How long a `--no-osd` command waits for the state change it suppresses.
+/// Hardware round-trips are well under this; past it, the mark is stale.
+const OSD_SUPPRESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 fn resolve_localizer(config: &Config) -> Localizer {
     Localizer::resolve(
         config.language.as_deref(),
@@ -74,6 +78,11 @@ pub struct App {
     pub media_player: MediaPlayer,
     pub notifications: Notifications,
     pub osd: Osd,
+    /// Suppresses the next OSD of this kind, for `ashell msg --no-osd`.
+    ///
+    /// The OSD is state-driven, so a command cannot cancel the display it would
+    /// cause: it can only pre-arm this slot for the change it is about to make.
+    suppress_next_osd: Option<(osd::OsdKind, std::time::Instant)>,
 }
 
 mod message;
@@ -143,6 +152,7 @@ impl App {
                     notifications,
                     media_player: MediaPlayer::new(config.media_player),
                     osd: Osd::new(config.osd),
+                    suppress_next_osd: None,
                 },
                 warm_icons,
             )
@@ -247,6 +257,45 @@ impl App {
             .map_or(Surface::Bar, |output| output.surface());
 
         use_theme(|t| t.surface(surface).iced_theme.clone())
+    }
+
+    /// The only place that shows an OSD.
+    ///
+    /// Every source — IPC commands, service state changes — goes through here,
+    /// so the layer surface is created consistently. Sources that report what a
+    /// menu already shows are suppressed while that menu is open.
+    fn show_osd(&mut self, request: osd::Request) -> Task<Message> {
+        if !self.osd.config().enabled {
+            return Task::none();
+        }
+        if request.kind.shown_in_menu() && self.outputs.menu_is_open() {
+            return Task::none();
+        }
+        if let Some((kind, armed_at)) = self.suppress_next_osd {
+            if kind == request.kind {
+                self.suppress_next_osd = None;
+                return Task::none();
+            }
+            if armed_at.elapsed() > OSD_SUPPRESS_TIMEOUT {
+                self.suppress_next_osd = None;
+            }
+        }
+        match self.osd.update(osd::Message::Show(request)) {
+            osd::Action::Show(timer) => Task::batch(vec![
+                timer.map(Message::Osd),
+                self.outputs.show_osd_layer(OSD_WIDTH, OSD_HEIGHT),
+            ]),
+            osd::Action::Hide => self.outputs.hide_osd_layer(),
+            osd::Action::None => Task::none(),
+        }
+    }
+
+    /// Arms the suppression slot for a command sent with `--no-osd`.
+    ///
+    /// The slot expires on its own: a command that changes nothing produces no
+    /// state diff, and the mark must not swallow an unrelated later change.
+    fn suppress_next_osd(&mut self, kind: osd::OsdKind) {
+        self.suppress_next_osd = Some((kind, std::time::Instant::now()));
     }
 
     pub fn scale_factor(&self, _id: SurfaceId) -> f32 {
@@ -449,6 +498,7 @@ impl App {
                     self.notifications.toggle_dnd();
                     Task::none()
                 }
+                modules::settings::Action::ShowOsd(request) => self.show_osd(request),
             },
             Message::OutputEvent(event) => match event {
                 OutputEvent::Added(info) => {
@@ -594,27 +644,26 @@ impl App {
                 }
 
                 // Show OSD overlay if enabled.
-                if self.osd.config().enabled && !cmd.no_osd() {
-                    let osd_info = osd_info::osd_info_for(self, &cmd);
-
-                    if let Some((kind, value, scale, muted)) = osd_info
-                        && let osd::Action::Show(timer) = self.osd.update(osd::Message::Show {
-                            kind,
-                            value,
-                            scale,
-                            muted,
-                        })
-                    {
-                        tasks.push(timer.map(Message::Osd));
-                        tasks.push(self.outputs.show_osd_layer(OSD_WIDTH, OSD_HEIGHT));
+                if cmd.no_osd() {
+                    // The action above changes state; the OSD for it arrives
+                    // later through the service snapshot, so pre-arm the
+                    // suppression for that kind instead of showing it here.
+                    if let Some(kind) = osd_info::suppressed_kind(&cmd) {
+                        self.suppress_next_osd(kind);
                     }
+                } else if let Some(request) = osd_info::osd_info_for(self, &cmd) {
+                    tasks.push(self.show_osd(request));
                 }
 
                 Task::batch(tasks)
             }
             Message::Osd(msg) => match self.osd.update(msg) {
+                osd::Action::None => Task::none(),
+                osd::Action::Show(timer) => Task::batch(vec![
+                    timer.map(Message::Osd),
+                    self.outputs.show_osd_layer(OSD_WIDTH, OSD_HEIGHT),
+                ]),
                 osd::Action::Hide => self.outputs.hide_osd_layer(),
-                _ => Task::none(),
             },
             Message::None => Task::none(),
             Message::ToggleVisibility => {
