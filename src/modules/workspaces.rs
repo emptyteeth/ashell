@@ -353,6 +353,32 @@ fn calculate_ui_workspaces(
     result
 }
 
+/// Side of a window icon, matching the size the tray module draws its icons
+/// at so the two read as the same class of artwork.
+fn window_icon_size(theme: &AshellTheme) -> f32 {
+    theme.font_size.md + 1.2
+}
+
+/// Width of the box drawn around the focused window's icon.
+fn focus_ring_width(theme: &AshellTheme) -> f32 {
+    theme.space.xxs / 4.0
+}
+
+/// Room left between the icon and its focus ring, so the ring does not sit on
+/// the artwork.
+fn focus_ring_padding(theme: &AshellTheme) -> f32 {
+    theme.space.xxs / 4.0
+}
+
+/// Side of the box one window icon occupies, focus ring included.
+///
+/// The workspace buttons are this tall while the icons are shown: iced shrinks
+/// a fixed-size child to the space left by the button, so an icon taller than
+/// that budget would be drawn smaller instead of overflowing.
+fn window_icon_box(theme: &AshellTheme) -> f32 {
+    window_icon_size(theme) + 1.2 * (focus_ring_width(theme) + focus_ring_padding(theme))
+}
+
 /// Draw one window icon, boxing it when the window is the focused one.
 ///
 /// The box is drawn as a container border rather than by recoloring the icon:
@@ -365,9 +391,9 @@ fn window_icon<'a>(
     theme: &AshellTheme,
     icon: XdgIcon,
     focused: bool,
-    icon_size: f32,
     focused_color: Color,
 ) -> Element<'a, Message> {
+    let icon_size = window_icon_size(theme);
     let icon: Element<'a, Message> = match icon {
         XdgIcon::Svg { handle, .. } => Svg::new(handle)
             .height(Length::Fixed(icon_size))
@@ -381,10 +407,10 @@ fn window_icon<'a>(
     };
 
     // The border sits just outside the icon, so it does not cover the artwork.
-    let border_width = theme.space.xxs / 4.0;
+    let border_width = focus_ring_width(theme);
     let radius = theme.radius.sm;
     container(icon)
-        .padding(theme.space.xxs / 2.0)
+        .padding(focus_ring_padding(theme))
         .style(move |_: &iced::Theme| container::Style {
             border: iced::Border {
                 // Unfocused icons keep the border width and paint nothing, so
@@ -420,7 +446,6 @@ fn workspace_button<'a>(
     let inner: Element<'a, Message> = if icons.is_empty() {
         text(name).size(font_size).into()
     } else {
-        let icon_size = font_size + 4.0;
         // The border takes the workspace label's own color, which the button
         // style already resolves for this workspace's state, so the box has the
         // same contrast as the text next to it under any palette.
@@ -432,7 +457,7 @@ fn workspace_button<'a>(
         let children: Vec<Element<'a, Message>> =
             std::iter::once(text(name).size(font_size).into())
                 .chain(icons.into_iter().map(|UiWindowIcon { icon, focused }| {
-                    window_icon(theme, icon, focused, icon_size, focused_color)
+                    window_icon(theme, icon, focused, focused_color)
                 }))
                 .collect();
         Row::with_children(children)
@@ -654,7 +679,14 @@ impl Workspaces {
 
         let row = use_theme(|theme| {
             let font_size = theme.module_font_size(&ModuleName::Workspaces, theme.font_size.xs);
-            let height = workspace_button_height(&theme.space, &theme.font_size, font_size);
+            // Icon rows keep the buttons tall enough for the icons, so iced
+            // does not shrink them to the space a text-sized button leaves;
+            // see `window_icon_box`.
+            let height = if self.config.indicator_format == WorkspaceIndicatorFormat::NameAndIcons {
+                window_icon_box(theme)
+            } else {
+                workspace_button_height(&theme.space, &theme.font_size, font_size)
+            };
             let grow = height - theme.space.md;
             Row::with_children(
                 self.ui_workspaces
